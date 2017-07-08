@@ -23,6 +23,26 @@ trait FilesystemTrait
     use FilesystemCommonTrait;
 
     /**
+     * @return bool
+     */
+    public function prune()
+    {
+        $time = time();
+        $pruned = true;
+
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::LEAVES_ONLY, \RecursiveIteratorIterator::CATCH_GET_CHILD) as $file) {
+            if ($h = @fopen($file, 'rb')) {
+                if ($time >= (int) $expiresAt = fgets($h)) {
+                    fclose($h);
+                    $pruned = (isset($expiresAt[0]) && @unlink($file) && !file_exists($file)) && $pruned;
+                }
+            }
+        }
+
+        return $pruned;
+    }
+
+    /**
      * {@inheritdoc}
      */
     protected function doFetch(array $ids)
