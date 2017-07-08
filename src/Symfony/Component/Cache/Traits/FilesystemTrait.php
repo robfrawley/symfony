@@ -23,6 +23,25 @@ trait FilesystemTrait
     use FilesystemCommonTrait;
 
     /**
+     * @param \DateInterval|null $time
+     *
+     * @return bool
+     */
+    public function prune(\DateInterval $time = null)
+    {
+        $time = $time ? \DateTime::createFromFormat('U', time())->add($time)->format('U') : time();
+        $pruned = true;
+
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::LEAVES_ONLY, \RecursiveIteratorIterator::CATCH_GET_CHILD) as $file) {
+            if ($time >= $file->getMTime()) {
+                $pruned = (@unlink($file) || !file_exists($file)) && $pruned;
+            }
+        }
+
+        return $pruned;
+    }
+
+    /**
      * {@inheritdoc}
      */
     protected function doFetch(array $ids)
