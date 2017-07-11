@@ -23,18 +23,19 @@ trait FilesystemTrait
     use FilesystemCommonTrait;
 
     /**
-     * @param \DateInterval|null $time
-     *
      * @return bool
      */
-    public function prune(\DateInterval $time = null)
+    public function prune()
     {
-        $time = $time ? \DateTime::createFromFormat('U', time())->add($time)->format('U') : time();
+        $time = time();
         $pruned = true;
 
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::LEAVES_ONLY, \RecursiveIteratorIterator::CATCH_GET_CHILD) as $file) {
-            if ($time >= $file->getMTime()) {
-                $pruned = (@unlink($file) || !file_exists($file)) && $pruned;
+            if ($h = @fopen($file, 'rb')) {
+                if ($time >= (int) $expiresAt = fgets($h)) {
+                    fclose($h);
+                    $pruned = (isset($expiresAt[0]) && @unlink($file) && !file_exists($file)) && $pruned;
+                }
             }
         }
 

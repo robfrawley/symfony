@@ -32,6 +32,35 @@ trait PhpFilesTrait
     }
 
     /**
+     * @return bool
+     */
+    public function prune()
+    {
+        $time = time();
+        $pruned = true;
+        $allowCompile = static::opcacheAllowCompile();
+
+        set_error_handler($this->includeHandler);
+        try {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::LEAVES_ONLY, \RecursiveIteratorIterator::CATCH_GET_CHILD) as $file) {
+                list($expiresAt) = include $file;
+
+                if ($time >= $expiresAt) {
+                    $pruned = (@unlink($file) && !file_exists($file)) && $pruned;
+
+                    if ($allowCompile) {
+                        @opcache_invalidate($file, true);
+                    }
+                }
+            }
+        } finally {
+            restore_error_handler();
+        }
+
+        return $pruned;
+    }
+
+    /**
      * {@inheritdoc}
      */
     protected function doFetch(array $ids)
@@ -82,7 +111,7 @@ trait PhpFilesTrait
     {
         $ok = true;
         $data = array($lifetime ? time() + $lifetime : PHP_INT_MAX, '');
-        $allowCompile = 'cli' !== PHP_SAPI || ini_get('opcache.enable_cli');
+        $allowCompile = static::opcacheAllowCompile();
 
         foreach ($values as $key => $value) {
             if (null === $value || is_object($value)) {
@@ -117,5 +146,13 @@ trait PhpFilesTrait
         }
 
         return $ok;
+    }
+
+    /**
+     * @return bool
+     */
+    private static function opcacheAllowCompile()
+    {
+        return 'cli' !== PHP_SAPI || ini_get('opcache.enable_cli');
     }
 }

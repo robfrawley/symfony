@@ -35,4 +35,62 @@ class PhpFilesAdapterTest extends AdapterTestCase
     {
         FilesystemAdapterTest::rmdir(sys_get_temp_dir().'/symfony-cache');
     }
+
+    public function testPrune()
+    {
+        if (isset($this->skippedTests[__FUNCTION__])) {
+            $this->markTestSkipped($this->skippedTests[__FUNCTION__]);
+
+            return;
+        }
+
+        $cache = $this->createCachePool();
+
+        $isHit = function ($name) use ($cache) {
+            $getFileMethod = (new \ReflectionObject($cache))->getMethod('getFile');
+            $getFileMethod->setAccessible(true);
+
+            return $cache->getItem($name)->isHit() && file_exists($getFileMethod->invoke($cache, $name));
+        };
+
+        $doSet = function ($name, $value, \DateInterval $expiresAfter = null) use ($cache) {
+            $item = $cache->getItem($name);
+            $item->set($value);
+
+            if ($expiresAfter) {
+                $item->expiresAfter($expiresAfter);
+            }
+
+            $cache->save($item);
+        };
+
+        $doSet('foo', 'foo-val');
+        $doSet('bar', 'bar-val', new \DateInterval('PT20S'));
+        $doSet('baz', 'baz-val', new \DateInterval('PT40S'));
+        $doSet('qux', 'qux-val', new \DateInterval('PT80S'));
+
+        $cache->prune();
+        $this->assertTrue($isHit('foo'));
+        $this->assertTrue($isHit('bar'));
+        $this->assertTrue($isHit('baz'));
+        $this->assertTrue($isHit('qux'));
+
+        sleep(30);
+        $cache->prune();
+        $this->assertTrue($isHit('foo'));
+        $this->assertFalse($isHit('bar'));
+        $this->assertTrue($isHit('baz'));
+        $this->assertTrue($isHit('qux'));
+
+        sleep(30);
+        $cache->prune();
+        $this->assertTrue($isHit('foo'));
+        $this->assertFalse($isHit('baz'));
+        $this->assertTrue($isHit('qux'));
+
+        sleep(30);
+        $cache->prune();
+        $this->assertTrue($isHit('foo'));
+        $this->assertFalse($isHit('qux'));
+    }
 }
