@@ -12,33 +12,38 @@
 namespace Symfony\Bundle\FrameworkBundle\DependencyInjection\Compiler;
 
 use Symfony\Component\Cache\PruneableInterface;
-use Symfony\Component\DependencyInjection\Argument\IteratorArgument;
 use Symfony\Component\DependencyInjection\ChildDefinition;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
-use Symfony\Component\DependencyInjection\Reference;
 
 class CachePoolPrunerPass implements CompilerPassInterface
 {
     /**
      * @var string
      */
-    private $cachePruneCommandId;
+    private $poolTag;
 
     /**
      * @var string
      */
-    private $cachePoolTag;
+    private $commandServiceId;
 
     /**
-     * @param string $cachePruneCommandId
-     * @param string $cachePoolTag
+     * @var string
      */
-    public function __construct($cachePruneCommandId = 'cache.command.pool_pruner', $cachePoolTag = 'cache.pool')
+    private $locatorServiceId;
+
+    /**
+     * @param string $poolTag
+     * @param string $commandServiceId
+     * @param string $locatorServiceId
+     */
+    public function __construct($poolTag = 'cache.pool', $commandServiceId = 'cache.command.pool_prune', $locatorServiceId = 'cache.command.pool_prune_locator')
     {
-        $this->cachePruneCommandId = $cachePruneCommandId;
-        $this->cachePoolTag = $cachePoolTag;
+        $this->poolTag = $poolTag;
+        $this->commandServiceId = $commandServiceId;
+        $this->locatorServiceId = $locatorServiceId;
     }
 
     /**
@@ -46,47 +51,36 @@ class CachePoolPrunerPass implements CompilerPassInterface
      */
     public function process(ContainerBuilder $container)
     {
-        if ($container->hasDefinition($this->cachePruneCommandId)) {
-            $container->getDefinition($this->cachePruneCommandId)->replaceArgument(0, $this->getCachePoolArgument($container));
+        if ($container->hasDefinition($this->locatorServiceId) && $container->hasDefinition($this->commandServiceId)) {
+            $services = $this->getCachePoolServiceIds($container);
+
+            $container->getDefinition($this->locatorServiceId)->replaceArgument(0, array_combine($services, $services));
+            $container->getDefinition($this->commandServiceId)->replaceArgument(1, $services);
         }
     }
 
     /**
      * @param ContainerBuilder $container
      *
-     * @return IteratorArgument
-     */
-    private function getCachePoolArgument(ContainerBuilder $container)
-    {
-        $services = $this->getPruneableCachePoolServiceIds($container);
-
-        return new IteratorArgument(array_combine($services, array_map(function ($id) {
-            return new Reference($id);
-        }, $services)));
-    }
-
-    /**
-     * @param ContainerBuilder $container
-     *
      * @return string[]
      */
-    private function getPruneableCachePoolServiceIds(ContainerBuilder $container)
+    private function getCachePoolServiceIds(ContainerBuilder $container)
     {
-        return array_filter($this->getNonAbstractCachePoolServiceIds($container), function ($id) use ($container) {
-            return $this->getServiceReflection($container, $id)->implementsInterface(PruneableInterface::class);
-        });
-    }
+        $services = array();
 
-    /**
-     * @param ContainerBuilder $container
-     *
-     * @return string[]
-     */
-    private function getNonAbstractCachePoolServiceIds(ContainerBuilder $container)
-    {
-        return array_filter(array_keys($container->findTaggedServiceIds($this->cachePoolTag)), function ($id) use ($container) {
-            return false === $container->getDefinition($id)->isAbstract();
-        });
+        foreach ($container->findTaggedServiceIds($this->poolTag) as $id => $tags) {
+            if ($container->getDefinition($id)->isAbstract()) {
+                continue;
+            }
+
+            if (!$this->getServiceReflection($container, $id)->implementsInterface(PruneableInterface::class)) {
+                continue;
+            }
+
+            $services[] = $id;
+        }
+
+        return $services;
     }
 
     /**

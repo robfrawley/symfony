@@ -19,6 +19,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 
 /**
  * Cache pool pruner command.
@@ -26,16 +27,24 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final class CachePoolPruneCommand extends Command
 {
     /**
-     * @var \IteratorAggregate
+     * @var ServiceLocator
+     */
+    private $locator;
+
+    /**
+     * @var string[]
      */
     private $pools;
 
     /**
-     * @param \IteratorAggregate $pools
+     * @param ServiceLocator $locator
+     * @param array          $pools
      */
-    public function __construct($pools)
+    public function __construct(ServiceLocator $locator, array $pools = array())
     {
         parent::__construct();
+
+        $this->locator = $locator;
         $this->pools = $pools;
     }
 
@@ -64,12 +73,8 @@ EOF
     {
         $io = new SymfonyStyle($input, $output);
 
-        if (0 === count($pools = $this->getMatchingPools($input))) {
-            throw new RuntimeException('No pruneable cache pools found.');
-        }
-
-        foreach ($pools as $name => $pool) {
-            $io->comment(sprintf('Pruning cache pool: <info>%s</info>', $name));
+        foreach ($this->getMatchingPools($input) as $id => $pool) {
+            $io->comment(sprintf('Pruning cache pool: <info>%s</info>', $id));
             $pool->prune();
         }
 
@@ -83,23 +88,26 @@ EOF
      */
     private function getMatchingPools(InputInterface $input)
     {
-        $pools = iterator_to_array($this->pools);
         $names = $input->getArgument('pools');
 
         if (0 === count($names)) {
-            return $pools;
+            $names = $this->pools;
         }
 
-        $matches = array();
+        $pools = array();
 
-        foreach ($input->getArgument('pools') as $name) {
-            if (!isset($pools[$name])) {
-                throw new InvalidArgumentException(sprintf('The "%s" pool does not exist or is not pruneable.', $name));
+        foreach ($names as $id) {
+            if (!$this->locator->has($id)) {
+                throw new InvalidArgumentException(sprintf('The "%s" pool does not exist or is not pruneable.', $id));
             }
 
-            $matches[$name] = $pools[$name];
+            $pools[$id] = $this->locator->get($id);
         }
 
-        return $matches;
+        if (0 === count($pools)) {
+            throw new RuntimeException('No pruneable cache pools found.');
+        }
+
+        return $pools;
     }
 }

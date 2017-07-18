@@ -16,21 +16,27 @@ use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Tests\TestCase;
 use Symfony\Component\Cache\PruneableInterface;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\DependencyInjection\Argument\RewindableGenerator;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpKernel\KernelInterface;
 
 class CachePruneCommandTest extends TestCase
 {
     public function testCommandWithNoArgument()
     {
-        $tester = $this->getCommandTester($this->getKernel(), $this->getRewindableGenerator());
+        $tester = $this->getCommandTester($this->getKernel(), $this->getDefaultServiceLocator(), $this->getDefaultPoolIds());
         $tester->execute(array());
     }
 
-    public function testCommandWithArgument()
+    public function testCommandWithOneArgument()
     {
-        $tester = $this->getCommandTester($this->getKernel(), $this->getRewindableGenerator());
-        $tester->execute(array('pools' => array('my_pool')));
+        $tester = $this->getCommandTester($this->getKernel(), $this->getDefaultServiceLocator(), $this->getDefaultPoolIds());
+        $tester->execute(array('pools' => array('foo_pool')));
+    }
+
+    public function testCommandWithTwoArguments()
+    {
+        $tester = $this->getCommandTester($this->getKernel(), $this->getDefaultServiceLocator(), $this->getDefaultPoolIds());
+        $tester->execute(array('pools' => array('foo_pool', 'bar_pool')));
     }
 
     /**
@@ -39,7 +45,7 @@ class CachePruneCommandTest extends TestCase
      */
     public function testCommandThrowsWithInvalidArgument1()
     {
-        $tester = $this->getCommandTester($this->getKernel(), $this->getRewindableGenerator(false));
+        $tester = $this->getCommandTester($this->getKernel(), $this->getDefaultServiceLocator(false), $this->getDefaultPoolIds());
         $tester->execute(array('pools' => array('my_invalid_pool')));
     }
 
@@ -49,7 +55,7 @@ class CachePruneCommandTest extends TestCase
      */
     public function testCommandThrowsWithInvalidArgument2()
     {
-        $tester = $this->getCommandTester($this->getKernel(), $this->getEmptyRewindableGenerator());
+        $tester = $this->getCommandTester($this->getKernel(), $this->getEmptyServiceLocator(), array());
         $tester->execute(array('pools' => array('my_invalid_pool')));
     }
 
@@ -59,28 +65,44 @@ class CachePruneCommandTest extends TestCase
      */
     public function testCommandThrowsWithNoPools()
     {
-        $tester = $this->getCommandTester($this->getKernel(), $this->getEmptyRewindableGenerator());
+        $tester = $this->getCommandTester($this->getKernel(), $this->getEmptyServiceLocator(), array());
         $tester->execute(array());
     }
 
     /**
-     * @return RewindableGenerator
+     * @param bool $expectsPrune
+     *
+     * @return ServiceLocator
      */
-    private function getRewindableGenerator($expectsPrune = true)
+    private function getDefaultServiceLocator($expectsPrune = true)
     {
-        return new RewindableGenerator(function () use ($expectsPrune) {
-            yield 'my_pool' => $this->getPruneable($expectsPrune);
-        }, 1);
+        $poolIds = $this->getDefaultPoolIds();
+        $locator = new ServiceLocator(array_combine($poolIds, array_map(function () use ($expectsPrune) {
+            return function () use ($expectsPrune) {
+                return $this->getPruneable($expectsPrune);
+            };
+        }, $poolIds)));
+
+        return $locator;
     }
 
     /**
-     * @return RewindableGenerator
+     * @return string[]
      */
-    private function getEmptyRewindableGenerator()
+    private function getDefaultPoolIds()
     {
-        return new RewindableGenerator(function () {
-            return new \ArrayIterator(array());
-        }, 1);
+        return array(
+            'foo_pool',
+            'bar_pool',
+        );
+    }
+
+    /**
+     * @return ServiceLocator
+     */
+    private function getEmptyServiceLocator()
+    {
+        return new ServiceLocator(array());
     }
 
     /**
@@ -128,15 +150,16 @@ class CachePruneCommandTest extends TestCase
     }
 
     /**
-     * @param KernelInterface     $kernel
-     * @param RewindableGenerator $generator
+     * @param KernelInterface $kernel
+     * @param ServiceLocator  $locator
+     * @param array           $poolIds
      *
      * @return CommandTester
      */
-    private function getCommandTester(KernelInterface $kernel, RewindableGenerator $generator)
+    private function getCommandTester(KernelInterface $kernel, ServiceLocator $locator, array $poolIds)
     {
         $application = new Application($kernel);
-        $application->add(new CachePoolPruneCommand($generator));
+        $application->add(new CachePoolPruneCommand($locator, $poolIds));
 
         return new CommandTester($application->find('cache:pool:prune'));
     }

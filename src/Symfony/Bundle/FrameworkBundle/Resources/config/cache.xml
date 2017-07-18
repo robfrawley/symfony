@@ -100,9 +100,15 @@
             </call>
         </service>
 
-        <service id="cache.command.pool_pruner" class="Symfony\Bundle\FrameworkBundle\Command\CachePoolPruneCommand" public="true">
-            <argument type="iterator" />
+        <service id="cache.command.pool_prune" class="Symfony\Bundle\FrameworkBundle\Command\CachePoolPruneCommand" public="true">
+            <argument type="service" id="cache.command.pool_prune_locator" />
+            <argument /> <!-- pruneable cache pool service ids array -->
             <tag name="console.command" command="cache:pool:prune" />
+        </service>
+
+        <service id="cache.command.pool_prune_locator" class="Symfony\Component\DependencyInjection\ServiceLocator">
+            <argument /> <!-- pruneable cache pool services array -->
+            <tag name="container.service_locator" />
         </service>
 
         <service id="cache.default_clearer" class="Symfony\Component\HttpKernel\CacheClearer\Psr6CacheClearer" public="true">

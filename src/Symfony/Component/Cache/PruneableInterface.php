@@ -13,6 +13,8 @@ namespace Symfony\Component\Cache;
 
 /**
  * Interface for adapters and simple cache implementations that allow pruning entries.
+ *
+ * @internal
  */
 interface PruneableInterface
 {
